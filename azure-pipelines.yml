@@ -1,22 +1,76 @@
-# Maven
-# Build your Java project and run tests with Apache Maven.
-# Add steps that analyze code, save build artifacts, deploy, and more:
-# https://docs.microsoft.com/azure/devops/pipelines/languages/java
-
 trigger:
-- main
+  branches:
+    include:
+      - main
 
 pool:
-  vmImage: ubuntu-latest
+  vmImage: 'ubuntu-latest'
 
-steps:
-- task: Maven@3
-  inputs:
-    mavenPomFile: 'pom.xml'
-    mavenOptions: '-Xmx3072m'
-    javaHomeOption: 'JDKVersion'
-    jdkVersionOption: '1.11'
-    jdkArchitectureOption: 'x64'
-    publishJUnitResults: true
-    testResultsFiles: '**/surefire-reports/TEST-*.xml'
-    goals: 'package'
+variables:
+  mavenOptions: '-Xmx1024m'
+  buildDir: '$(System.DefaultWorkingDirectory)/target'
+
+stages:
+  - stage: Build
+    displayName: 'Build stage'
+    jobs:
+      - job: MavenBuild
+        displayName: 'Build with Maven'
+        steps:
+          - task: Maven@3
+            inputs:
+              mavenPomFile: 'pom.xml'
+              goals: 'compile'
+              options: '$(mavenOptions)'
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: '1.11'
+              mavenVersionOption: 'Default'
+
+  - stage: Test
+    displayName: 'Test stage'
+    dependsOn: Build
+    jobs:
+      - job: MavenTest
+        displayName: 'Run unit tests'
+        steps:
+          - task: Maven@3
+            inputs:
+              mavenPomFile: 'pom.xml'
+              goals: 'test'
+              options: '$(mavenOptions)'
+
+          - task: PublishTestResults@2
+            inputs:
+              testResultsFormat: 'JUnit'
+              testResultsFiles: '**/surefire-reports/TEST-*.xml'
+              failTaskOnFailedTests: true
+
+  - stage: Package
+    displayName: 'Package stage'
+    dependsOn: Test
+    jobs:
+      - job: MavenPackage
+        displayName: 'Package the application'
+        steps:
+          - task: Maven@3
+            inputs:
+              mavenPomFile: 'pom.xml'
+              goals: 'package'
+              options: '$(mavenOptions)'
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: '$(buildDir)'
+              ArtifactName: 'java-app'
+              publishLocation: 'Container'
+
+  - stage: Deploy
+    displayName: 'Deploy stage'
+    dependsOn: Package
+    condition: succeeded()
+    jobs:
+      - job: DeployJob
+        displayName: 'Deploy application'
+        steps:
+          - script: echo "Deploying application..."
+            displayName: 'Dummy deploy step'
